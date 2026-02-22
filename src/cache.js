@@ -39,4 +39,28 @@ function set(key, value, ttlMs) {
   persist();
 }
 
-module.exports = { load, get, set };
+function getAll() {
+  const now = Date.now();
+  const entries = [];
+  for (const [key, entry] of Object.entries(store)) {
+    if (entry.expiry > 0 && now > entry.expiry) continue;
+    entries.push({ key, value: entry.value, expiry: entry.expiry });
+  }
+  return entries;
+}
+
+function remove(key) {
+  if (store[key]) {
+    delete store[key];
+    persist();
+    return true;
+  }
+  return false;
+}
+
+function clear() {
+  store = {};
+  persist();
+}
+
+module.exports = { load, get, set, getAll, remove, clear };

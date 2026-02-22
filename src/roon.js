@@ -1,9 +1,48 @@
+const fs = require("fs");
 const RoonApi = require("node-roon-api");
 const RoonApiTransport = require("node-roon-api-transport");
 const RoonApiImage = require("node-roon-api-image");
 const RoonApiStatus = require("node-roon-api-status");
 const constants = require("./constants");
 const { createLogger } = require("./logger");
+
+// Use centralized path for Roon state file (writable location in packaged app)
+const ROON_STATE_PATH = constants.roonStatePath;
+
+// ─── Monkey-patch: node-roon-api treats empty WebSocket messages as fatal ───
+// Roon Core occasionally sends empty frames which cause "MOO: empty message
+// received" → transport.close() → disconnect. Patch to silently ignore them.
+const Moo = require("node-roon-api/moo");
+
+const _origParse = Moo.prototype.parse;
+Moo.prototype.parse = function (buf) {
+  if (buf && buf.length === 0) {
+    // Return a synthetic no-op message instead of undefined (which triggers close)
+    return { verb: "COMPLETE", name: "Success", request_id: "__noop__", headers: {} };
+  }
+  return _origParse.call(this, buf);
+};
+
+const _origHandleResponse = Moo.prototype.handle_response;
+Moo.prototype.handle_response = function (msg, body) {
+  if (msg.request_id === "__noop__") return true; // silently discard
+  return _origHandleResponse.call(this, msg, body);
+};
+
+// Patch WSTransport to log WebSocket close codes for diagnostics
+const WSTransport = require("node-roon-api/transport-websocket");
+const _origTransportClose = WSTransport.prototype.close;
+WSTransport.prototype.close = function () {
+  if (this.ws) {
+    // ws library stores close info internally
+    const code = this.ws._closeCode;
+    const reason = this.ws._closeMessage?.toString() || "";
+    if (code !== undefined) {
+      log.debug(`WebSocket close: code=${code}${reason ? " reason=" + reason : ""}`);
+    }
+  }
+  return _origTransportClose.call(this);
+};
 
 const log = createLogger("Roon");
 
@@ -19,14 +58,33 @@ class RoonService {
     this._reconnectTimer = null;
     this.api = null;
     this.svc_status = null;
+    this.coreHttpBase = null; // e.g. "http://192.168.x.x:9330"
   }
 
   _onCorePaired(core) {
-    log.info(`Paired with Roon Core: ${core.display_name} (v${core.display_version})`);
+    // Suppress noisy log on quick reconnects (Roon Core drops connection every ~30s)
+    if (this._lastPairTime && Date.now() - this._lastPairTime < 60000) {
+      log.debug(`Re-paired with Roon Core: ${core.display_name}`);
+    } else {
+      log.info(`Paired with Roon Core: ${core.display_name} (v${core.display_version})`);
+    }
+    this._lastPairTime = Date.now();
     this.core = core;
     this.transport = core.services.RoonApiTransport;
     this.image = core.services.RoonApiImage;
     this._reconnectDelay = 1000;
+
+    // Save HTTP base URL for image API (used by GUI)
+    const reg = core.registration || {};
+    if (reg.http_port) {
+      const host = core.moo?.transport?.host || reg.extension_host || "127.0.0.1";
+      this.coreHttpBase = `http://${host}:${reg.http_port}`;
+      log.debug(`Roon Core HTTP: ${this.coreHttpBase}`);
+    }
+
+    if (this.svc_status) {
+      this.svc_status.set_status("Connected", false);
+    }
 
     this.transport.subscribe_zones((cmd, data) => {
       this._handleZoneEvent(cmd, data);
@@ -34,12 +92,22 @@ class RoonService {
   }
 
   _onCoreUnpaired(core) {
-    log.warn(`Unpaired from Roon Core: ${core.display_name}`);
+    // Only log as WARN on first disconnect; quick reconnect cycles log as DEBUG
+    if (this._lastPairTime && Date.now() - this._lastPairTime < 60000) {
+      log.debug(`Roon Core connection cycle (${core.display_name})`);
+    } else {
+      log.warn(`Unpaired from Roon Core: ${core.display_name}`);
+    }
     this.core = null;
     this.transport = null;
     this.image = null;
     this.zones = {};
     if (this.onCoreLost) this.onCoreLost();
+
+    // Trigger immediate SOOD re-scan for fast reconnection (instead of waiting up to 10s)
+    if (this.api?._sood) {
+      this.api._sood.query({ query_service_id: "00720724-5143-4a9b-abac-0e50cba674bb" });
+    }
   }
 
   _handleZoneEvent(cmd, data) {
@@ -78,7 +146,7 @@ class RoonService {
     }
   }
 
-  start(coreAddress) {
+  start(coreAddress, { debug = false } = {}) {
     this.api = new RoonApi({
       extension_id: constants.extensionId,
       display_name: constants.extensionDisplayName,
@@ -86,7 +154,27 @@ class RoonService {
       publisher: constants.extensionPublisher,
       email: "",
       website: "",
-      log_level: "none",
+      log_level: debug ? "all" : "none",
+
+      // Use absolute path for state persistence (CWD may differ in Electron)
+      get_persisted_state: () => {
+        try {
+          const content = fs.readFileSync(ROON_STATE_PATH, "utf8");
+          return JSON.parse(content).roonstate || {};
+        } catch {
+          return {};
+        }
+      },
+      set_persisted_state: (state) => {
+        try {
+          let config = {};
+          try {
+            config = JSON.parse(fs.readFileSync(ROON_STATE_PATH, "utf8")) || {};
+          } catch {}
+          config.roonstate = state;
+          fs.writeFileSync(ROON_STATE_PATH, JSON.stringify(config, null, "    "));
+        } catch {}
+      },
 
       core_paired: (core) => this._onCorePaired(core),
       core_unpaired: (core) => this._onCoreUnpaired(core),
@@ -151,6 +239,11 @@ class RoonService {
         }
       );
     });
+  }
+
+  getImageUrl(imageKey, size = 300) {
+    if (!this.coreHttpBase || !imageKey) return null;
+    return `${this.coreHttpBase}/api/image/${imageKey}?scale=fit&width=${size}&height=${size}&format=image/jpeg`;
   }
 
   getZoneByName(name) {

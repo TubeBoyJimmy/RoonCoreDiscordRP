@@ -21,6 +21,9 @@ const defaults = {
   logging: {
     debug: false,
   },
+  gui: {
+    minimizeToTray: null, // null = not yet decided (will prompt), true/false = user choice
+  },
 };
 
 let config = null;

@@ -19,6 +19,7 @@ class DiscordIpcService {
     this._reconnectDelay = 5000;
     this._autoReconnect = false;
     this.onReconnected = null; // callback when reconnection succeeds
+    this.onDisconnected = null; // callback when connection is lost
   }
 
   _getPipePath(n) {
@@ -111,6 +112,7 @@ class DiscordIpcService {
       this.connected = false;
       this.socket = null;
       this._readBuffer = Buffer.alloc(0);
+      if (this.onDisconnected) this.onDisconnected();
       if (this._autoReconnect) {
         this._scheduleReconnect();
       }
