@@ -1,0 +1,6 @@
+node_modules/
+data/config.yaml
+data/cache.json
+config.json
+*.log
+.claude/
