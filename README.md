@@ -34,28 +34,20 @@ cd RoonCoreDiscordRP
 npm install
 ```
 
-## Discord Application Setup
-
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Click **New Application** and name it (e.g. `Roon`) — this name appears as "Listening to **Roon**" on your profile
-3. Copy the **Application ID** and paste it into `data/config.yaml` under `discord.clientId`
-4. Go to **Rich Presence > Art Assets** and upload two icons:
-   - `playing` — a play icon (512x512 PNG, white on transparent recommended)
-   - `paused` — a pause icon (512x512 PNG, white on transparent recommended)
-   - Sample SVG files are provided in the `assets/` folder
-
-## First Run
+## Quick Start
 
 ```bash
 npm start
 ```
 
-On the first run, the app will guide you through setup:
+That's it! On the first run, the app will guide you through setup:
 
 1. Choose connection mode: **auto-discover** (same network) or **manual IP:port**
 2. Authorize "Discord Rich Presence" in **Roon > Settings > Extensions**
 3. Once connected, all available zones are listed and monitoring begins
 4. Configuration is saved to `data/config.yaml`
+
+A pre-configured Discord Application is included — no Developer Portal setup needed.
 
 ## Configuration
 
@@ -74,7 +66,7 @@ display:
   buttons: []                  # Custom buttons: [{label: "...", url: "..."}] (max 2)
 
 discord:
-  clientId: '...'              # Your Discord Application ID
+  clientId: '...'              # Discord Application ID (pre-configured, no need to change)
   pipeNumber: 0                # IPC pipe number (0-9)
 
 logging:
@@ -118,12 +110,21 @@ The app registers as a Roon Extension. Once authorized, it receives real-time pu
 | All zones stopped | Activity cleared |
 | Cold start with stale paused zones | Ignored until a zone starts playing |
 
+## Custom Discord Application (Optional)
+
+By default, the app uses a pre-configured Discord Application, and your Discord profile will show "Listening to **Roon**". If you want to customize the display name or icons:
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application** — the name you choose will appear as "Listening to **YourName**"
+3. Copy the **Application ID** and set it as `discord.clientId` in `data/config.yaml`
+4. Optionally, go to **Rich Presence > Art Assets** and upload icons named `playing` and `paused` (512x512 PNG)
+
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
 | Extension not appearing in Roon | Ensure the app is running and on the same network as Roon Core. Try specifying `coreAddress` manually. |
-| Discord status not updating | Make sure Discord desktop app is running. Check that `clientId` matches your Discord Application. |
+| Discord status not updating | Make sure Discord desktop app is running. If using a custom `clientId`, verify it matches your Discord Application. |
 | Cover art not showing | Catbox may be temporarily unreachable. The activity will still show without an image. Check `logging.debug: true` for details. |
 | "Discord IPC handshake failed" | Discord may still be starting up. The app will auto-reconnect. |
 | Progress bar not updating on seek | Seek detection uses a 5-second threshold. Very small seeks may not trigger an update. |

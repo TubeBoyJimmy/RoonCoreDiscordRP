@@ -34,28 +34,20 @@ cd RoonCoreDiscordRP
 npm install
 ```
 
-## Discord Application 設定
-
-1. 前往 [Discord Developer Portal](https://discord.com/developers/applications)
-2. 點選 **New Application**，命名為你想要的名稱（例如 `Roon`）— 此名稱會顯示為「正在聽 **Roon**」
-3. 複製 **Application ID**，貼到 `data/config.yaml` 的 `discord.clientId`
-4. 前往 **Rich Presence > Art Assets**，上傳兩張圖示：
-   - `playing` — 播放圖示（512x512 PNG，建議白色透明底）
-   - `paused` — 暫停圖示（512x512 PNG，建議白色透明底）
-   - `assets/` 資料夾中提供了範例 SVG 檔案
-
-## 首次執行
+## 快速開始
 
 ```bash
 npm start
 ```
 
-首次執行時，程式會引導你完成設定：
+就這樣！首次執行時，程式會引導你完成設定：
 
 1. 選擇連線方式：**自動探索**（同網段）或**手動輸入 IP:port**
 2. 在 **Roon > 設定 > Extensions** 中授權「Discord Rich Presence」
 3. 連線成功後，列出所有可用的 Zone 並開始監聽
 4. 設定儲存至 `data/config.yaml`
+
+已內建預設的 Discord Application — 不需要到 Developer Portal 做任何設定。
 
 ## 設定說明
 
@@ -74,7 +66,7 @@ display:
   buttons: []                  # 自訂按鈕：[{label: "...", url: "..."}]（最多 2 個）
 
 discord:
-  clientId: '...'              # 你的 Discord Application ID
+  clientId: '...'              # Discord Application ID（已預設，不需修改）
   pipeNumber: 0                # IPC pipe 編號（0-9）
 
 logging:
@@ -118,12 +110,21 @@ Discord 客戶端更新 Rich Presence
 | 所有 Zone 停止 | 清除 Activity |
 | 冷啟動時有殘留暫停 Zone | 忽略，直到有 Zone 開始播放 |
 
+## 自訂 Discord Application（選用）
+
+預設情況下，程式使用內建的 Discord Application，你的 Discord 個人檔案會顯示「正在聽 **Roon**」。如果你想自訂顯示名稱或圖示：
+
+1. 前往 [Discord Developer Portal](https://discord.com/developers/applications)
+2. 點選 **New Application** — 你取的名稱會顯示為「正在聽 **你的名稱**」
+3. 複製 **Application ID**，設定到 `data/config.yaml` 的 `discord.clientId`
+4. 可選：前往 **Rich Presence > Art Assets**，上傳名為 `playing` 和 `paused` 的圖示（512x512 PNG）
+
 ## 疑難排解
 
 | 問題 | 解決方式 |
 |------|---------|
 | Roon 設定中看不到 Extension | 確認程式正在執行且與 Roon Core 在同一網路。嘗試在 `coreAddress` 手動指定 IP。 |
-| Discord 狀態未更新 | 確認 Discord 桌面版正在執行。檢查 `clientId` 是否與你的 Discord Application 一致。 |
+| Discord 狀態未更新 | 確認 Discord 桌面版正在執行。若使用自訂 `clientId`，請確認與你的 Discord Application 一致。 |
 | 封面圖未顯示 | Catbox 可能暫時無法連線。Activity 會正常顯示但沒有圖片。開啟 `logging.debug: true` 查看詳情。 |
 | "Discord IPC handshake failed" | Discord 可能還在啟動中，程式會自動重連。 |
 | 快轉後進度條未更新 | 快轉偵測使用 5 秒閾值，非常小的快轉可能不會觸發更新。 |
