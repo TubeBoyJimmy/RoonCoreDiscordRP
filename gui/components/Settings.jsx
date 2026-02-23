@@ -180,6 +180,12 @@ export default function Settings() {
           checked={draft.gui?.minimizeToTray !== false}
           onChange={(v) => patchDraft("gui", "minimizeToTray", v)}
         />
+        <ToggleField
+          label="Start Minimized"
+          hint="Start minimized to system tray when auto-launched on boot"
+          checked={draft.gui?.startMinimized !== false}
+          onChange={(v) => patchDraft("gui", "startMinimized", v)}
+        />
       </div>
 
       <div className="card settings-section">

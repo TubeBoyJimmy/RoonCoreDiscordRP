@@ -23,6 +23,7 @@ const defaults = {
   },
   gui: {
     minimizeToTray: null, // null = not yet decided (will prompt), true/false = user choice
+    startMinimized: true, // start minimized to tray when auto-launched on boot
   },
 };
 

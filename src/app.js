@@ -29,6 +29,7 @@ class AppController extends EventEmitter {
     this._lastUpdateTime = null;
     this._zonePlayStartTimes = {};
     this._lastActivity = null;
+    this._lastEmitTime = 0; // Throttle GUI state updates
 
     // Connection status
     this._roonStatus = "disconnected";
@@ -385,8 +386,13 @@ class AppController extends EventEmitter {
     // State is "playing"
     this._clearPauseTimer();
 
-    const trackKey =
-      now_playing.image_key || now_playing.three_line?.line1 || "";
+    // Capture event-time timestamp before any async ops — used for Discord timestamps
+    const eventSeek = now_playing.seek_position ?? 0;
+    const trackStartTimestamp = Math.round(Date.now() - eventSeek * 1000);
+
+    // Include both image_key and track name to distinguish same-album tracks
+    const trackName = now_playing.three_line?.line1 || "";
+    const trackKey = `${now_playing.image_key || ""}:${trackName}`;
     const sameTrack =
       this._lastState === "playing" &&
       this._lastTrackKey === trackKey &&
@@ -406,7 +412,15 @@ class AppController extends EventEmitter {
       }
     }
 
-    if (sameTrack && !seekDetected) return;
+    if (sameTrack && !seekDetected) {
+      // Still emit state periodically so GUI timers stay in sync
+      const now = Date.now();
+      if (now - this._lastEmitTime > 3000) {
+        this._lastEmitTime = now;
+        this._emitState();
+      }
+      return;
+    }
     if (this._updateInProgress) {
       // Don't drop zone switches or new tracks — mark for retry after current update finishes
       this._pendingZoneRetry = true;
@@ -420,22 +434,35 @@ class AppController extends EventEmitter {
       this._lastTrackKey = trackKey;
 
       let coverArtUrl = null;
+      const needsUpload =
+        cfg.display.showCoverArt &&
+        now_playing.image_key &&
+        now_playing.image_key !== this._lastImageKey;
+
       if (cfg.display.showCoverArt && now_playing.image_key) {
-        if (now_playing.image_key !== this._lastImageKey) {
+        if (needsUpload) {
+          // Check cache first — upload may already have a cached URL
+          coverArtUrl = cache.get(now_playing.image_key);
           this._lastImageKey = now_playing.image_key;
-          const imageBuffer = await this.roon.getImage(now_playing.image_key);
-          if (imageBuffer) {
-            coverArtUrl = await uploadImage(
-              now_playing.image_key,
-              imageBuffer
-            );
+
+          if (!coverArtUrl) {
+            const imageBuffer = await this.roon.getImage(now_playing.image_key);
+            if (imageBuffer) {
+              coverArtUrl = await uploadImage(
+                now_playing.image_key,
+                imageBuffer
+              );
+            }
           }
         } else {
           coverArtUrl = cache.get(now_playing.image_key);
         }
       }
 
-      const activity = buildActivity(zone, coverArtUrl);
+      // Re-read zone for track info, but use pre-computed timestamp for accuracy
+      const freshZone =
+        this.roon?.zones[zone.zone_id] || zone;
+      const activity = buildActivity(freshZone, coverArtUrl, trackStartTimestamp);
       if (!activity) return;
 
       this._lastActivity = activity;
@@ -452,9 +479,10 @@ class AppController extends EventEmitter {
       }
 
       await this.discord.setActivity(activity);
-      this._lastSeekPosition = now_playing.seek_position ?? 0;
+      const freshNowPlaying = freshZone.now_playing || now_playing;
+      this._lastSeekPosition = freshNowPlaying.seek_position ?? 0;
       this._lastUpdateTime = Date.now();
-      const trackInfo = now_playing.three_line;
+      const trackInfo = freshNowPlaying.three_line;
       if (seekDetected) {
         log.info(`⏩ Seek detected [${zone.display_name}]`);
       } else {
@@ -463,6 +491,7 @@ class AppController extends EventEmitter {
         );
       }
       this.emit("activity-updated", activity);
+      this._lastEmitTime = Date.now();
       this._emitState();
     } catch (err) {
       log.error("Failed to update activity:", err.message);

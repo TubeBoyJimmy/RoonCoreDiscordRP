@@ -9,6 +9,7 @@ let appController = null;
 let tray = null;
 
 const isDev = process.argv.includes("--dev");
+const isAutoLaunch = app.getLoginItemSettings().wasOpenedAtLogin;
 
 // ─── Tray icon generation (16x16 purple circle PNG) ───
 
@@ -68,11 +69,15 @@ function createTrayIconImage() {
 // ─── Window ───
 
 function createWindow() {
+  const cfg = config.get();
+  const startHidden = isAutoLaunch && !isDev && cfg.gui?.startMinimized !== false;
+
   mainWindow = new BrowserWindow({
     width: 1060,
     height: 760,
     minWidth: 800,
     minHeight: 600,
+    show: !startHidden,
     frame: false,
     backgroundColor: "#1a1a2e",
     webPreferences: {

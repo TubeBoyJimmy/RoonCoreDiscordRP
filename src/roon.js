@@ -128,6 +128,20 @@ class RoonService {
             this.zones[zone.zone_id] = zone;
           }
         }
+        if (data.zones_seek_changed) {
+          for (const update of data.zones_seek_changed) {
+            const zone = this.zones[update.zone_id];
+            if (zone) {
+              zone.seek_position = update.seek_position;
+              if (zone.now_playing) {
+                zone.now_playing.seek_position = update.seek_position;
+              }
+              if (update.queue_time_remaining !== undefined) {
+                zone.queue_time_remaining = update.queue_time_remaining;
+              }
+            }
+          }
+        }
         if (data.zones_added) {
           for (const zone of data.zones_added) {
             this.zones[zone.zone_id] = zone;

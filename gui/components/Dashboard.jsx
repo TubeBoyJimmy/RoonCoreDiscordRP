@@ -9,22 +9,27 @@ function formatTime(seconds) {
 
 function NowPlayingCard({ activeZone }) {
   const [progress, setProgress] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   useEffect(() => {
     if (!activeZone || activeZone.state !== "playing") {
       if (activeZone?.state === "paused") {
-        setProgress(activeZone.length > 0 ? (activeZone.seekPosition / activeZone.length) * 100 : 0);
+        const pct = activeZone.length > 0 ? (activeZone.seekPosition / activeZone.length) * 100 : 0;
+        setProgress(pct);
+        setElapsedTime(activeZone.seekPosition);
       }
       return;
     }
 
+    const updateStart = Date.now();
+    const startSeek = activeZone.seekPosition;
     const update = () => {
-      const elapsed = activeZone.seekPosition + (Date.now() - updateStart) / 1000;
+      const elapsed = startSeek + (Date.now() - updateStart) / 1000;
       const pct = activeZone.length > 0 ? Math.min((elapsed / activeZone.length) * 100, 100) : 0;
       setProgress(pct);
+      setElapsedTime(elapsed);
     };
 
-    const updateStart = Date.now();
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
@@ -80,7 +85,7 @@ function NowPlayingCard({ activeZone }) {
               <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
             </div>
             <div className="progress-times">
-              <span>{formatTime(activeZone.seekPosition)}</span>
+              <span>{formatTime(elapsedTime)}</span>
               <span>{formatTime(activeZone.length)}</span>
             </div>
           </div>

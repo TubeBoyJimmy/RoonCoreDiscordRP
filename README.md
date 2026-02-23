@@ -27,6 +27,7 @@ Includes both a **CLI mode** for headless/server use and an **Electron GUI** wit
 - **Lightweight** — no Discord library needed (raw IPC), no image processing library (Roon API handles resizing)
 - **Electron GUI** — dashboard, settings editor, Discord preview, cache management, and log viewer
 - **System tray** — minimize to tray for background operation
+- **Start on boot** — optional auto-launch with Windows, starts minimized to tray
 
 ## Prerequisites
 

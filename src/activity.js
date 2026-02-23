@@ -1,7 +1,4 @@
 const config = require("./config");
-const { createLogger } = require("./logger");
-
-const log = createLogger("Activity");
 
 const ACTIVITY_TYPE_LISTENING = 2;
 
@@ -12,8 +9,8 @@ function truncate(text, maxLen) {
   return text;
 }
 
-function buildActivity(zone, coverArtUrl) {
-  const { now_playing, state, seek_position } = zone;
+function buildActivity(zone, coverArtUrl, trackStartTimestamp) {
+  const { now_playing, state } = zone;
   if (!now_playing) return null;
 
   const cfg = config.get().display;
@@ -56,14 +53,23 @@ function buildActivity(zone, coverArtUrl) {
 
   if (cfg.showProgress && state === "playing") {
     const length = now_playing.length;
-    const seek = seek_position ?? now_playing.seek_position ?? 0;
 
     if (length && length > 0) {
-      const now = Date.now();
-      activity.timestamps = {
-        start: Math.round(now - seek * 1000),
-        end: Math.round(now + (length - seek) * 1000),
-      };
+      if (trackStartTimestamp) {
+        // Use pre-computed start timestamp from event time — avoids drift
+        // caused by async operations (image upload) advancing seek_position
+        activity.timestamps = {
+          start: trackStartTimestamp,
+          end: trackStartTimestamp + Math.round(length * 1000),
+        };
+      } else {
+        const seek = now_playing.seek_position ?? 0;
+        const now = Date.now();
+        activity.timestamps = {
+          start: Math.round(now - seek * 1000),
+          end: Math.round(now + (length - seek) * 1000),
+        };
+      }
     }
   }
 
