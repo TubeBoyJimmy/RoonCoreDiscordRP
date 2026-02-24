@@ -1,6 +1,6 @@
 {
   "name": "roon-core-discord-rp",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Discord Rich Presence powered by Roon Core Extension API",
   "main": "electron/main.js",
   "scripts": {

@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = require("electron");
 const path = require("path");
+const os = require("os");
 const zlib = require("zlib");
 const { AppController } = require("../src/app");
 const config = require("../src/config");
@@ -9,7 +10,11 @@ let appController = null;
 let tray = null;
 
 const isDev = process.argv.includes("--dev");
-const isAutoLaunch = app.getLoginItemSettings().wasOpenedAtLogin;
+// Detect auto-launch: wasOpenedAtLogin may be unreliable on some Windows setups,
+// so fall back to checking if openAtLogin is registered AND system just booted (<5 min)
+const loginSettings = app.getLoginItemSettings();
+const isAutoLaunch = loginSettings.wasOpenedAtLogin ||
+  (loginSettings.openAtLogin && os.uptime() < 300);
 
 // ─── Tray icon generation (16x16 purple circle PNG) ───
 
@@ -77,7 +82,7 @@ function createWindow() {
     height: 760,
     minWidth: 800,
     minHeight: 600,
-    show: !startHidden,
+    show: false, // always start hidden, show via ready-to-show
     frame: false,
     backgroundColor: "#1a1a2e",
     webPreferences: {
@@ -85,6 +90,12 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    if (!startHidden) {
+      mainWindow.show();
+    }
   });
 
   if (isDev) {
