@@ -11,7 +11,7 @@ const defaults = {
     showArtist: true,
     showCoverArt: true,
     showProgress: true,
-    pauseTimeout: 30,
+    pauseTimeout: 10,
     buttons: [],
   },
   discord: {

@@ -9,7 +9,7 @@ const appRoot = isPackaged
 
 module.exports = {
   name: "RoonCoreDiscordRP",
-  version: "2.1.1",
+  version: "2.1.2",
   extensionId: "com.rooncorerdp.discord",
   extensionDisplayName: "Discord Rich Presence",
   extensionPublisher: "RoonCoreDiscordRP",

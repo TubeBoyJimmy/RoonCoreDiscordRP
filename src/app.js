@@ -413,13 +413,17 @@ class AppController extends EventEmitter {
     }
 
     if (sameTrack && !seekDetected) {
-      // Still emit state periodically so GUI timers stay in sync
       const now = Date.now();
-      if (now - this._lastEmitTime > 3000) {
-        this._lastEmitTime = now;
-        this._emitState();
+      // Periodically refresh Discord timestamp to correct any drift (every 5 min)
+      if (now - (this._lastUpdateTime || 0) < 300000) {
+        // Still emit state periodically so GUI timers stay in sync
+        if (now - this._lastEmitTime > 3000) {
+          this._lastEmitTime = now;
+          this._emitState();
+        }
+        return;
       }
-      return;
+      // Fall through to full update for timestamp correction
     }
     if (this._updateInProgress) {
       // Don't drop zone switches or new tracks — mark for retry after current update finishes

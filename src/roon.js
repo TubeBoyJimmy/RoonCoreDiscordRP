@@ -122,14 +122,20 @@ class RoonService {
         if (this.onZoneChanged) this.onZoneChanged(this.zones);
         break;
 
-      case "Changed":
+      case "Changed": {
+        // Track which zones got full replacement — their seek data is authoritative
+        const fullUpdateIds = new Set();
         if (data.zones_changed) {
           for (const zone of data.zones_changed) {
             this.zones[zone.zone_id] = zone;
+            fullUpdateIds.add(zone.zone_id);
           }
         }
         if (data.zones_seek_changed) {
           for (const update of data.zones_seek_changed) {
+            // Skip if zone was fully replaced in this batch — stale seek from
+            // the previous track would overwrite the new track's seek_position
+            if (fullUpdateIds.has(update.zone_id)) continue;
             const zone = this.zones[update.zone_id];
             if (zone) {
               zone.seek_position = update.seek_position;
@@ -154,6 +160,7 @@ class RoonService {
         }
         if (this.onZoneChanged) this.onZoneChanged(this.zones);
         break;
+      }
 
       default:
         break;

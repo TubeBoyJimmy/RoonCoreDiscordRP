@@ -51,11 +51,11 @@ function buildActivity(zone, coverArtUrl, trackStartTimestamp) {
     activity.assets = assets;
   }
 
-  if (cfg.showProgress && state === "playing") {
+  if (cfg.showProgress) {
     const length = now_playing.length;
 
     if (length && length > 0) {
-      if (trackStartTimestamp) {
+      if (state === "playing" && trackStartTimestamp) {
         // Use pre-computed start timestamp from event time — avoids drift
         // caused by async operations (image upload) advancing seek_position
         activity.timestamps = {
@@ -63,6 +63,9 @@ function buildActivity(zone, coverArtUrl, trackStartTimestamp) {
           end: trackStartTimestamp + Math.round(length * 1000),
         };
       } else {
+        // For paused: shows progress bar frozen at current position
+        // (bar creeps slowly but pause timeout clears activity before it matters)
+        // For playing without pre-computed timestamp: fallback calculation
         const seek = now_playing.seek_position ?? 0;
         const now = Date.now();
         activity.timestamps = {
