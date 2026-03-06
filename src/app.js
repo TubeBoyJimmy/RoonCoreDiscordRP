@@ -27,6 +27,7 @@ class AppController extends EventEmitter {
     this._hasSeenPlaying = false;
     this._lastSeekPosition = null;
     this._lastUpdateTime = null;
+    this._trackStartTimestamp = null; // Epoch ms when current track started
     this._zonePlayStartTimes = {};
     this._lastActivity = null;
     this._lastEmitTime = 0; // Throttle GUI state updates
@@ -141,6 +142,7 @@ class AppController extends EventEmitter {
               }
               this._lastState = "stopped";
               this._lastActivity = null;
+              this._trackStartTimestamp = null;
               this._emitState();
             }
           }, 10000);
@@ -169,7 +171,8 @@ class AppController extends EventEmitter {
       let coverArtUrl = zone.now_playing.image_key
         ? cache.get(zone.now_playing.image_key)
         : null;
-      const activity = buildActivity(zone, coverArtUrl);
+      // Use stored trackStartTimestamp for accuracy (same as normal path)
+      const activity = buildActivity(zone, coverArtUrl, this._trackStartTimestamp);
       if (activity) {
         await this.discord.setActivity(activity);
         log.info(`Resent activity after Discord reconnect [${zone.display_name}]`);
@@ -179,6 +182,9 @@ class AppController extends EventEmitter {
     try {
       await this.discord.connect();
       this._discordStatus = "connected";
+      // Clear any stale activity from previous session
+      await this.discord.clearActivity();
+      log.info("Cleared stale Discord activity from previous session");
     } catch {
       log.warn("Discord not running yet, will reconnect automatically");
       this.discord._autoReconnect = true;
@@ -258,6 +264,7 @@ class AppController extends EventEmitter {
       this._hasSeenPlaying = false;
       this._zonePlayStartTimes = {};
       this._lastActivity = null;
+      this._trackStartTimestamp = null;
       if (this.discord?.connected) {
         await this.discord.clearActivity();
       }
@@ -324,6 +331,7 @@ class AppController extends EventEmitter {
         this._lastTrackKey = null;
         this._lastActiveZoneId = null;
         this._lastActivity = null;
+        this._trackStartTimestamp = null;
         this._clearPauseTimer();
         if (this.discord?.connected) {
           await this.discord.clearActivity();
@@ -386,10 +394,6 @@ class AppController extends EventEmitter {
     // State is "playing"
     this._clearPauseTimer();
 
-    // Capture event-time timestamp before any async ops — used for Discord timestamps
-    const eventSeek = now_playing.seek_position ?? 0;
-    const trackStartTimestamp = Math.round(Date.now() - eventSeek * 1000);
-
     // Include both image_key and track name to distinguish same-album tracks
     const trackName = now_playing.three_line?.line1 || "";
     const trackKey = `${now_playing.image_key || ""}:${trackName}`;
@@ -412,18 +416,27 @@ class AppController extends EventEmitter {
       }
     }
 
+    // Determine trackStartTimestamp — reuse stored value for same track,
+    // only recompute for new tracks or seeks
+    let trackStartTimestamp;
     if (sameTrack && !seekDetected) {
+      // Same track, no change: just keep GUI in sync, do NOT resend to Discord
+      // (each setActivity call introduces Discord processing delay → offset accumulation)
       const now = Date.now();
-      // Periodically refresh Discord timestamp to correct any drift (every 5 min)
-      if (now - (this._lastUpdateTime || 0) < 300000) {
-        // Still emit state periodically so GUI timers stay in sync
-        if (now - this._lastEmitTime > 3000) {
-          this._lastEmitTime = now;
-          this._emitState();
-        }
-        return;
+      if (now - this._lastEmitTime > 3000) {
+        this._lastEmitTime = now;
+        this._emitState();
       }
-      // Fall through to full update for timestamp correction
+      return;
+    } else {
+      // New track or seek: compute fresh timestamp from event-time data
+      const eventSeek = now_playing.seek_position ?? 0;
+      trackStartTimestamp = Math.round(Date.now() - eventSeek * 1000);
+      this._trackStartTimestamp = trackStartTimestamp;
+
+      if (sameTrack) {
+        log.debug(`Seek detected: eventSeek=${eventSeek}s`);
+      }
     }
     if (this._updateInProgress) {
       // Don't drop zone switches or new tracks — mark for retry after current update finishes

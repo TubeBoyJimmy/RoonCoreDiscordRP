@@ -9,6 +9,18 @@ let mainWindow = null;
 let appController = null;
 let tray = null;
 
+// Catch EADDRNOTAVAIL from node-roon-api SSDP multicast join —
+// happens on boot when network interfaces aren't ready yet.
+// sood.js retries every 5s, so just swallow the error and let it reconnect.
+process.on("uncaughtException", (err) => {
+  if (err.code === "EADDRNOTAVAIL") {
+    console.warn("[SOOD] Network not ready, will retry:", err.message);
+    return;
+  }
+  // Re-throw anything else so it still crashes visibly
+  throw err;
+});
+
 const isDev = process.argv.includes("--dev");
 // Detect auto-launch: wasOpenedAtLogin may be unreliable on some Windows setups,
 // so fall back to checking if openAtLogin is registered AND system just booted (<5 min)
