@@ -1,6 +1,7 @@
 const { EventEmitter } = require("events");
 const config = require("./config");
 const cache = require("./cache");
+const clock = require("./clock");
 const { RoonService } = require("./roon");
 const { DiscordIpcService } = require("./discord");
 const { buildActivity } = require("./activity");
@@ -97,6 +98,16 @@ class AppController extends EventEmitter {
   async start() {
     config.load();
     cache.load();
+
+    // Measure local clock offset before any activity is sent (best-effort,
+    // bounded so a dead network can't stall startup). Discord renders elapsed
+    // time against each viewer's clock, so a skewed host clock shifts the
+    // displayed position for everyone — compensate at the source.
+    await Promise.race([
+      clock.sync().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+    clock.startPeriodicSync();
 
     const cfg = config.get();
 
@@ -200,6 +211,7 @@ class AppController extends EventEmitter {
   async stop() {
     log.info("Shutting down...");
     this._clearPauseTimer();
+    clock.stopPeriodicSync();
     if (this._uiDebounceTimer) {
       clearTimeout(this._uiDebounceTimer);
       this._uiDebounceTimer = null;

@@ -138,6 +138,20 @@ export default function Settings() {
           />
           <div className="form-hint">Seconds to wait before clearing activity on pause (0 = never)</div>
         </div>
+        <div className="form-group">
+          <label className="form-label">Friends-List Status Text</label>
+          <select
+            className="form-input"
+            value={draft.display.statusDisplay || "track"}
+            onChange={(e) => patchDraft("display", "statusDisplay", e.target.value)}
+            style={{ width: "220px" }}
+          >
+            <option value="track">Listening to &lt;track&gt;</option>
+            <option value="artist">Listening to &lt;artist&gt;</option>
+            <option value="app">Listening to &lt;app name&gt;</option>
+          </select>
+          <div className="form-hint">What shows as your status in friends' member lists</div>
+        </div>
       </div>
 
       <div className="card settings-section">

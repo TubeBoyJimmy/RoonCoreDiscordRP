@@ -28,6 +28,8 @@ Includes both a **CLI mode** for headless/server use and an **Electron GUI** wit
 - **Electron GUI** — dashboard, settings editor, Discord preview, cache management, and log viewer
 - **System tray** — minimize to tray for background operation
 - **Start on boot** — optional auto-launch with Windows, starts minimized to tray
+- **Clock offset compensation** — timestamps corrected against true time, accurate even if the host clock drifts
+- **Custom status text** — friends see "Listening to *track*" (or artist/app name) in the member list
 
 ## Prerequisites
 
@@ -93,6 +95,7 @@ display:
   showProgress: true           # Show progress bar (timestamps)
   pauseTimeout: 30             # Seconds to wait before clearing activity on pause (0 = never)
   buttons: []                  # Custom buttons: [{label: "...", url: "..."}] (max 2)
+  statusDisplay: track         # Friends-list status text: track | artist | app
 
 discord:
   clientId: '...'              # Discord Application ID (pre-configured, no need to change)
@@ -167,6 +170,9 @@ By default, the app uses a pre-configured Discord Application, and your Discord 
 ## Limitations
 
 - **Roon Arc**: Playback via Roon Arc is not visible to the Extension API. This is a Roon platform limitation.
+  (A fallback via ListenBrainz scrobbling was evaluated and rejected: Roon reports plays to scrobble services
+  on a lazy periodic schedule — typically minutes late, even for streamed content — making real-time presence
+  impossible through that path.)
 - **Discord desktop required**: Rich Presence uses local IPC, so the Discord desktop app must be running on the same machine.
 - **Single activity**: Discord only supports one Rich Presence activity per user. The most recently active zone is shown.
 
@@ -180,6 +186,7 @@ RoonCoreDiscordRP/
 │   ├── roon.js         # Roon Core connection & zone subscription
 │   ├── discord.js      # Discord IPC (raw named pipe)
 │   ├── activity.js     # Zone → Discord Activity builder
+│   ├── clock.js        # System clock offset measurement & compensation
 │   ├── images.js       # Image upload via curl (Uguu/Catbox) + caching
 │   ├── config.js       # YAML config with defaults
 │   ├── cache.js        # TTL-based key-value cache

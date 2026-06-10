@@ -13,6 +13,8 @@ const defaults = {
     showProgress: true,
     pauseTimeout: 10,
     buttons: [],
+    // Member-list status text: "track" | "artist" | "app"
+    statusDisplay: "track",
   },
   discord: {
     clientId: constants.discordClientId,

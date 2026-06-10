@@ -28,6 +28,8 @@
 - **Electron GUI** — 儀表板、設定編輯、Discord 預覽、快取管理、即時日誌
 - **系統匣** — 縮小到系統匣，背景持續運作
 - **開機啟動** — 可選擇隨 Windows 開機啟動，自動最小化至系統匣
+- **時鐘偏移補償** — 以標準時間校正時間戳，即使主機時鐘漂移，顯示的播放時間依然精準
+- **自訂狀態文字** — 好友列表可顯示「Listening to *歌名*」（或藝人/應用程式名稱）
 
 ## 前置需求
 
@@ -93,6 +95,7 @@ display:
   showProgress: true           # 顯示進度條（時間戳記）
   pauseTimeout: 30             # 暫停後幾秒清除狀態（0 = 不清除）
   buttons: []                  # 自訂按鈕：[{label: "...", url: "..."}]（最多 2 個）
+  statusDisplay: track         # 好友列表狀態文字：track（歌名）| artist（藝人）| app（程式名）
 
 discord:
   clientId: '...'              # Discord Application ID（已預設，不需修改）
@@ -167,6 +170,8 @@ Discord 客戶端更新 Rich Presence
 ## 已知限制
 
 - **Roon Arc**：透過 Roon Arc 的播放對 Extension API 不可見，這是 Roon 平台的限制。
+  （曾評估以 ListenBrainz scrobbling 作為替代資料來源：Roon 對 scrobble 服務的上報是惰性批次，
+  通常延遲數分鐘（串流內容亦然），無法做到即時狀態顯示，故未採用。）
 - **需要 Discord 桌面版**：Rich Presence 使用本地 IPC，Discord 桌面版必須在同一台機器上執行。
 - **單一 Activity**：Discord 每個使用者同時只能顯示一個 Rich Presence Activity，會顯示最近活躍的 Zone。
 
@@ -180,6 +185,7 @@ RoonCoreDiscordRP/
 │   ├── roon.js         # Roon Core 連線與 Zone 訂閱
 │   ├── discord.js      # Discord IPC（原生 named pipe）
 │   ├── activity.js     # Zone → Discord Activity 建構
+│   ├── clock.js        # 系統時鐘偏移量測與補償
 │   ├── images.js       # 透過 curl 上傳圖片（Uguu/Catbox）+ 快取
 │   ├── config.js       # YAML 設定與預設值
 │   ├── cache.js        # 帶 TTL 的 Key-Value 快取
