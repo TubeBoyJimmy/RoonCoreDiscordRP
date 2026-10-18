@@ -4,6 +4,7 @@ const os = require("os");
 const zlib = require("zlib");
 const { AppController } = require("../src/app");
 const config = require("../src/config");
+const { createAutoLaunch } = require("./autostart");
 
 let mainWindow = null;
 let appController = null;
@@ -24,8 +25,9 @@ process.on("uncaughtException", (err) => {
 const isDev = process.argv.includes("--dev");
 // Detect auto-launch: wasOpenedAtLogin may be unreliable on some Windows setups,
 // so fall back to checking if openAtLogin is registered AND system just booted (<5 min)
-const loginSettings = app.getLoginItemSettings();
-const isAutoLaunch = loginSettings.wasOpenedAtLogin ||
+const autoLaunch = createAutoLaunch(app);
+const loginSettings = process.platform === "linux" ? {} : app.getLoginItemSettings();
+const isAutoLaunch = process.argv.includes("--autostart") || loginSettings.wasOpenedAtLogin ||
   (loginSettings.openAtLogin && os.uptime() < 300);
 
 // ─── Tray icon generation (16x16 purple circle PNG) ───
@@ -237,11 +239,10 @@ function setupIpcHandlers() {
 
   // Auto-launch (start on boot)
   ipcMain.handle("get-auto-launch", () => {
-    return app.getLoginItemSettings().openAtLogin;
+    return autoLaunch.get();
   });
   ipcMain.handle("set-auto-launch", (_e, enabled) => {
-    app.setLoginItemSettings({ openAtLogin: enabled });
-    return app.getLoginItemSettings().openAtLogin;
+    return autoLaunch.set(enabled);
   });
 
   // Window controls

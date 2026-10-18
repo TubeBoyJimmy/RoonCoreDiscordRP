@@ -5,10 +5,13 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
+    "doctor": "node scripts/doctor.js",
     "gui": "node scripts/launch-gui.js",
     "gui:dev": "concurrently \"vite --config vite.config.js\" \"wait-on http://localhost:5173 && node scripts/launch-gui.js --dev\"",
     "gui:build": "vite build --config vite.config.js",
-    "dist": "npm run gui:build && electron-builder --win dir"
+    "dist": "npm run gui:build && electron-builder --win dir",
+    "dist:linux": "npm run gui:build && electron-builder --linux dir"
   },
   "keywords": [
     "roon",
@@ -52,6 +55,10 @@
         "to": "assets"
       }
     ],
+    "linux": {
+      "target": ["dir"],
+      "category": "AudioVideo"
+    },
     "win": {
       "target": [
         "dir"

@@ -1,4 +1,5 @@
 const path = require("path");
+const { resolveDataPaths } = require("./paths");
 
 // In a packaged Electron app, __dirname is inside app.asar (read-only).
 // Writable data (config, cache, roon state) goes next to the .exe instead.
@@ -17,10 +18,7 @@ module.exports = {
   discordClientId: "1475071196708995145",
 
   appRoot,
-  dataDir: path.join(appRoot, "data"),
-  configPath: path.join(appRoot, "data", "config.yaml"),
-  cachePath: path.join(appRoot, "data", "cache.json"),
-  roonStatePath: path.join(appRoot, "config.json"),
+  ...resolveDataPaths({ appRoot }),
 
   isPackaged,
   isWindows: process.platform === "win32",

@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 const constants = require("./constants");
 
 let store = {};
@@ -16,8 +17,8 @@ function load() {
 }
 
 function persist() {
-  fs.mkdirSync(constants.dataDir, { recursive: true });
-  fs.writeFileSync(constants.cachePath, JSON.stringify(store, null, 2));
+  fs.mkdirSync(path.dirname(constants.cachePath), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(constants.cachePath, JSON.stringify(store, null, 2), { mode: 0o600 });
 }
 
 function get(key) {

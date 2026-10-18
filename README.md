@@ -2,7 +2,7 @@
 
 > Discord Rich Presence powered by Roon Core Extension API
 
-**[🌐 繁體中文](README.zh-TW.md)**
+**[🌐 繁體中文](README.zh-TW.md)** · [Linux rehearsal guide (繁體中文)](docs/linux-rehearsal.zh-TW.md)
 
 Display your Roon playback status on Discord — including track name, artist, album, cover art, and a live progress bar. Unlike other solutions that rely on detecting a local Roon client, this project connects directly to Roon Core via the Extension API, so it works regardless of which zone or device is playing.
 
@@ -27,15 +27,15 @@ Includes both a **CLI mode** for headless/server use and an **Electron GUI** wit
 - **Lightweight** — no Discord library needed (raw IPC), no image processing library (Roon API handles resizing)
 - **Electron GUI** — dashboard, settings editor, Discord preview, cache management, and log viewer
 - **System tray** — minimize to tray for background operation
-- **Start on boot** — optional auto-launch with Windows, starts minimized to tray
+- **Start at login** — optional desktop auto-launch (Linux XDG autostart; existing Windows behavior retained), starts minimized to tray
 - **Clock offset compensation** — timestamps corrected against true time, accurate even if the host clock drifts
 - **Custom status text** — friends see "Listening to *track*" (or artist/app name) in the member list
 
 ## Prerequisites
 
-- **Node.js** 18+
+- **Node.js** 22.12+ or 24 (GUI build dependencies require a recent Node release)
 - **Roon Core** running on your network
-- **Discord** desktop app running on the same machine
+- **Discord** desktop app running in the same user session on the same machine
 
 ## Installation
 
@@ -61,7 +61,7 @@ On the first run, the app will guide you through setup:
    ![Roon Extensions](assets/Extensions.jpg)
 
 3. Once connected, all available zones are listed and monitoring begins
-4. Configuration is saved to `data/config.yaml`
+4. Configuration is saved to `data/config.yaml` on Windows, or `~/.config/roon-core-discord-rp/config.yaml` on Linux
 
 ### GUI Mode (Electron)
 
@@ -82,7 +82,7 @@ A pre-configured Discord Application is included — no Developer Portal setup n
 
 ## Configuration
 
-After the first run, you can edit `data/config.yaml`:
+After the first run, Windows keeps `data/config.yaml`; Linux uses `~/.config/roon-core-discord-rp/config.yaml` (or `XDG_CONFIG_HOME`). See the [Linux guide](docs/linux-rehearsal.zh-TW.md) for state migration and diagnostics.
 
 ```yaml
 roon:
@@ -100,6 +100,7 @@ display:
 discord:
   clientId: '...'              # Discord Application ID (pre-configured, no need to change)
   pipeNumber: 0                # IPC pipe number (0-9)
+  ipcPath: ''                  # Optional absolute local socket path; restart after changing
 
 logging:
   debug: false                 # Enable verbose logging

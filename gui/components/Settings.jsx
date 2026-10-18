@@ -39,6 +39,7 @@ export default function Settings() {
   const [draft, setDraft] = useState(null);
   const [saved, setSaved] = useState(false);
   const [autoLaunch, setAutoLaunch] = useState(false);
+  const [autoLaunchError, setAutoLaunchError] = useState("");
 
   useEffect(() => {
     if (config && !draft) {
@@ -157,6 +158,12 @@ export default function Settings() {
       <div className="card settings-section">
         <div className="card-title">Discord</div>
         <InputField
+          label="IPC Socket Path (optional)"
+          hint="Absolute local socket path; restart after changing. DISCORD_IPC_PATH overrides this setting."
+          value={draft.discord.ipcPath || ""}
+          onChange={(v) => patchDraft("discord", "ipcPath", v)}
+        />
+        <InputField
           label="Client ID"
           hint="Discord Application ID (pre-configured, change only if using custom app)"
           value={draft.discord.clientId}
@@ -180,14 +187,18 @@ export default function Settings() {
       <div className="card settings-section">
         <div className="card-title">Application</div>
         <ToggleField
-          label="Start on Boot"
-          hint="Automatically launch when Windows starts"
+          label="Start at Login"
+          hint="Automatically launch in your desktop session after login"
           checked={autoLaunch}
           onChange={async (v) => {
-            const result = await window.api.setAutoLaunch(v);
-            setAutoLaunch(result);
+            try {
+              const result = await window.api.setAutoLaunch(v);
+              setAutoLaunch(result);
+              setAutoLaunchError("");
+            } catch (err) { setAutoLaunchError(err.message); }
           }}
         />
+        {autoLaunchError && <div role="alert" className="form-hint">{autoLaunchError}</div>}
         <ToggleField
           label="Minimize to Tray"
           hint="Close window minimizes to system tray instead of quitting"
@@ -196,7 +207,7 @@ export default function Settings() {
         />
         <ToggleField
           label="Start Minimized"
-          hint="Start minimized to system tray when auto-launched on boot"
+          hint="Start minimized to system tray when auto-launched at login"
           checked={draft.gui?.startMinimized !== false}
           onChange={(v) => patchDraft("gui", "startMinimized", v)}
         />

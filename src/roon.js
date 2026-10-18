@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 const RoonApi = require("node-roon-api");
 const RoonApiTransport = require("node-roon-api-transport");
 const RoonApiImage = require("node-roon-api-image");
@@ -193,8 +194,11 @@ class RoonService {
             config = JSON.parse(fs.readFileSync(ROON_STATE_PATH, "utf8")) || {};
           } catch {}
           config.roonstate = state;
-          fs.writeFileSync(ROON_STATE_PATH, JSON.stringify(config, null, "    "));
-        } catch {}
+          fs.mkdirSync(path.dirname(ROON_STATE_PATH), { recursive: true, mode: 0o700 });
+          fs.writeFileSync(ROON_STATE_PATH, JSON.stringify(config, null, "    "), { mode: 0o600 });
+        } catch (err) {
+          log.error("Cannot save Roon pairing state:", err.message);
+        }
       },
 
       core_paired: (core) => this._onCorePaired(core),

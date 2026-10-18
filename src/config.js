@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 const yaml = require("js-yaml");
 const constants = require("./constants");
 
@@ -19,6 +20,7 @@ const defaults = {
   discord: {
     clientId: constants.discordClientId,
     pipeNumber: 0,
+    ipcPath: "", // Optional absolute socket path; DISCORD_IPC_PATH takes precedence.
   },
   logging: {
     debug: false,
@@ -67,8 +69,8 @@ function load() {
 }
 
 function save() {
-  fs.mkdirSync(constants.dataDir, { recursive: true });
-  fs.writeFileSync(constants.configPath, yaml.dump(config, { lineWidth: -1 }));
+  fs.mkdirSync(path.dirname(constants.configPath), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(constants.configPath, yaml.dump(config, { lineWidth: -1 }), { mode: 0o600 });
 }
 
 function get() {

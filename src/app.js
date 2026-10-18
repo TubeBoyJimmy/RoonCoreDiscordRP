@@ -164,7 +164,7 @@ class AppController extends EventEmitter {
     this.roon.start(cfg.roon.coreAddress || undefined, { debug: cfg.logging.debug });
 
     // Start Discord
-    this.discord = new DiscordIpcService(cfg.discord.clientId, cfg.discord.pipeNumber);
+    this.discord = new DiscordIpcService(cfg.discord.clientId, cfg.discord.pipeNumber, { ipcPath: cfg.discord.ipcPath });
 
     this.discord.onDisconnected = () => {
       this._discordStatus = "disconnected";
