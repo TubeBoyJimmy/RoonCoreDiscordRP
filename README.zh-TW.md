@@ -1,6 +1,6 @@
 # RoonCoreDiscordRP
 
-[Linux／PVE F 階段預演指南](docs/linux-rehearsal.zh-TW.md)：Linux XDG 資料、桌面登入啟動、IPC 診斷與驗收範圍。Linux 實機部署尚待驗證；Windows 路徑維持相容。
+[Linux 桌面使用指南](docs/linux-rehearsal.zh-TW.md)：Linux XDG 資料、桌面登入啟動、IPC 診斷與驗收範圍。已於 Debian 13 桌面實機驗證；Windows 路徑維持相容，本分支的 Windows 版本尚待實測。
 
 > 透過 Roon Core Extension API 驅動的 Discord Rich Presence
 

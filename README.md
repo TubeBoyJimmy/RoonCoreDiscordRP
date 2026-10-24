@@ -2,7 +2,7 @@
 
 > Discord Rich Presence powered by Roon Core Extension API
 
-**[🌐 繁體中文](README.zh-TW.md)** · [Linux rehearsal guide (繁體中文)](docs/linux-rehearsal.zh-TW.md)
+**[🌐 繁體中文](README.zh-TW.md)** · [Linux desktop guide (繁體中文)](docs/linux-rehearsal.zh-TW.md)
 
 Display your Roon playback status on Discord — including track name, artist, album, cover art, and a live progress bar. Unlike other solutions that rely on detecting a local Roon client, this project connects directly to Roon Core via the Extension API, so it works regardless of which zone or device is playing.
 

@@ -1,16 +1,16 @@
-# Linux／PVE F 階段預演
+# Linux 桌面使用指南
 
-更新：2026-10-18。這是本機開發版本與未部署的操作流程；不代表已在 PVE、LXC 或正式 Discord 帳號驗收。
+更新：2026-10-24。本分支已在 Debian 13＋Xfce 桌面（Proxmox VE 虛擬機）實機部署並驗證，見文末「實機驗證」。本分支的 Windows 版本尚未重新實測。
 
 ## 承載方式
 
-Roon Server 可留在原本機器，透過 LAN 連線；Discord **桌面程式**與本工具則在同一 Linux 一般使用者的桌面工作階段執行。CLI 只省掉本工具的視窗，仍需本機 Discord IPC。瀏覽器版 Discord 不提供這個本機 IPC。不要把本工具當成 PVE 主機 root service，也不要跨容器直接暴露 Discord socket。
+Roon Server 可留在原本機器，透過 LAN 連線；Discord **桌面程式**與本工具則在同一 Linux 一般使用者的桌面工作階段執行。CLI 只省掉本工具的視窗，仍需本機 Discord IPC。瀏覽器版 Discord 不提供這個本機 IPC。不要把本工具當成系統層級的 root service，也不要跨容器直接暴露 Discord socket。
 
-PVE 上可另設實驗用途的 Linux 桌面客體，容器編號、IP、遠端桌面方式由該次實驗決定。這份流程沒有建立客體、開啟自動登入、調整 CT100 或存取媒體 LUN。若非特權 LXC 的 Electron sandbox 不可用，先保留錯誤供分析，不以 privileged、unconfined 或 `--no-sandbox` 作預設解法。
+可放在實體 Linux 桌面，或虛擬化平台上的 Linux 桌面 VM。若在容器中執行時 Electron sandbox 不可用，先保留錯誤供分析，不以 privileged、unconfined 或 `--no-sandbox` 作預設解法。
 
 ## 初次操作
 
-1. 在 Linux 桌面登入一般使用者，安裝並開啟[官方 Discord Linux 桌面版](https://discord.com/download)，以 GUI 登入。初次預演優先使用一般安裝版，減少 Flatpak／Snap socket 隔離變數。
+1. 在 Linux 桌面登入一般使用者，安裝並開啟[官方 Discord Linux 桌面版](https://discord.com/download)，以 GUI 登入。優先使用一般安裝版，減少 Flatpak／Snap socket 隔離變數。
 2. 安裝 Node.js 22.12+（或 Node.js 24）、Git 與 curl。本工具沿用現有 lockfile；不要為移植執行 `npm audit fix --force`。
 3. 在專案資料夾開終端機，執行下列建置命令。這部分需要命令列；設定與驗收使用既有 GUI。
 
@@ -49,15 +49,22 @@ Discord socket 預設會掃描目前使用者的 runtime/temp 及已知 Flatpak�
 - 選一首原本可播的曲目，確認曲名、歌手、進度與封面（若啟用）在 Discord 個人資料實際顯示。
 - 暫停超過設定時間，確認清除；繼續、跳轉、換曲及換 zone 各檢查一次。
 - 關閉再開啟 Discord，確認本工具恢復 IPC 並更新目前播放。終止工具後不應繼續重連。
-- 若啟用了登入啟動，登出／登入桌面後再檢查；這不是重啟 PVE 或更動既有 TEST 驗收。
+- 若啟用了登入啟動，登出／登入桌面後再檢查。
 - 與 Plex 等其他 Presence 工具共存時，逐項確認哪個活動被 Discord 顯示；本版本未加入跨工具優先權仲裁。
 
-未通過時關閉 Linux 工具即可回到原 Windows 工具；來源設定和配對檔仍保留。記錄日期、客體、版本、畫面或日誌種類，不把 mock 測試當成登入／Presence 實機成功。
+未通過時關閉 Linux 工具即可回到原 Windows 工具；來源設定和配對檔仍保留。
 
-## 打包與驗證範圍
+## 打包與自動測試
 
-在 Linux 建置 `npm run dist:linux` 可產生 `release/linux-unpacked`，沿用 Electron sandbox。2026-10-18 已在本機隔離的 Debian bookworm／Node 24 Docker 環境完成依 lockfile 安裝、Vite 建置及 Linux x64 打包，並核對可執行檔存在；產物隨暫存容器移除，未發佈發行包。`npm run dist` 保留原 Windows 打包行為。
+在 Linux 建置 `npm run dist:linux` 可產生 `release/linux-unpacked`，沿用 Electron sandbox。`npm run dist` 保留原 Windows 打包行為。
 
-2026-10-18 自動測試在 Windows Node 24.13.1 與上述 Linux 的一般使用者（UID 1000）均 **15/15 通過**；Linux 使用真實 Unix socket 與本地 mock Discord server。覆蓋 Windows 路徑相容、XDG 路徑、設定/快取持久化、登入項目及 IPC 的分片、PING、無回應、提早斷線、重新連線與關閉取消。這些測試不連 Roon、不登入 Discord、不上傳封面。實際 GUI／桌面登入、Roon 授權、Discord 狀態與客體 sandbox 仍需後續實驗。
+自動測試（`npm test`）2026-10-24 在 Windows Node 上 **19/19 通過**；2026-10-18 的 Linux 部分曾在 Debian bookworm／Node 24 的一般使用者（UID 1000）環境通過。覆蓋 Windows 路徑相容、XDG 路徑、設定/快取持久化、登入項目、IPC 的分片／PING／無回應／提早斷線／重新連線／關閉取消，以及封面抓取逾時不阻塞狀態更新。這些測試不連 Roon、不登入 Discord、不上傳封面。
+
+## 實機驗證（2026-10-24）
+
+- 環境：Debian 13＋Xfce 桌面 VM，Electron 35.7.5，一般使用者工作階段；Discord 官方桌面版；Roon Core 2.74 在同網段另一台主機。
+- 已驗證：Roon Extension 授權、Discord 狀態（曲名／歌手／進度／封面）、系統匣選單、登入桌面後自動啟動並最小化。
+- 封面修正：封面暫時抓不到時（例如 Roon Core 取不到串流來源的封面），舊版會讓播放事件排隊延遲、之後送出過時的狀態；本分支在封面請求逾時或失敗時先更新文字狀態、稍後補上封面，實機確認換歌即時更新。
+- 未驗證：本分支的 Windows 打包與 Windows 實機行為。
 
 機制參考：[Discord RPC](https://github.com/discord/discord-api-docs/blob/main/developers/topics/rpc.mdx)、[Electron login APIs](https://www.electronjs.org/docs/latest/api/app#appsetloginitemsettingssettings-macos-windows)、[XDG Autostart](https://specifications.freedesktop.org/autostart/latest/)。
