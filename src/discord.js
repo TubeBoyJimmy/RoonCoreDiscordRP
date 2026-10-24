@@ -1,44 +1,56 @@
 const net = require("net");
+const path = require("path");
 const { createLogger } = require("./logger");
 const constants = require("./constants");
 
 const log = createLogger("Discord");
+const OP_HANDSHAKE = 0, OP_FRAME = 1, OP_CLOSE = 2, OP_PING = 3, OP_PONG = 4;
+const MAX_FRAME_BYTES = 1024 * 1024;
 
-const OP_HANDSHAKE = 0;
-const OP_FRAME = 1;
-const OP_CLOSE = 2;
+function getIpcPaths(pipeNumber = 0, { platform = process.platform, env = process.env, ipcPath = "" } = {}) {
+  const override = env.DISCORD_IPC_PATH || ipcPath;
+  if (override) {
+    const p = platform === "win32" ? path.win32 : path.posix;
+    if (!p.isAbsolute(override)) throw new Error("Discord IPC path must be absolute");
+    return [override];
+  }
+  if (!Number.isInteger(pipeNumber) || pipeNumber < 0 || pipeNumber > 9) {
+    throw new Error("Discord pipeNumber must be an integer from 0 to 9");
+  }
+  const result = [];
+  const roots = [...new Set([env.XDG_RUNTIME_DIR, env.TMPDIR, env.TMP, env.TEMP, "/tmp"]
+    .filter((root) => root && path.posix.isAbsolute(root)))];
+  for (let n = pipeNumber; n < 10; n++) {
+    if (platform === "win32") {
+      result.push(`\\\\?\\pipe\\discord-ipc-${n}`);
+    } else {
+      for (const root of roots) {
+        for (const prefix of ["", "app/com.discordapp.Discord", ".flatpak/com.discordapp.Discord/xdg-run", "snap.discord"]) {
+          result.push(path.posix.join(root, prefix, `discord-ipc-${n}`));
+        }
+      }
+    }
+  }
+  return result;
+}
 
 class DiscordIpcService {
-  constructor(clientId, pipeNumber = 0) {
+  constructor(clientId, pipeNumber = 0, options = {}) {
     this.clientId = clientId;
     this.pipeNumber = pipeNumber;
+    this.options = options;
     this.socket = null;
     this.connected = false;
+    this.connectedPath = null;
     this._readBuffer = Buffer.alloc(0);
     this._reconnectTimer = null;
     this._reconnectDelay = 5000;
     this._autoReconnect = false;
-    this.onReconnected = null; // callback when reconnection succeeds
-    this.onDisconnected = null; // callback when connection is lost
-  }
-
-  _getPipePath(n) {
-    if (constants.isWindows) {
-      return `\\\\?\\pipe\\discord-ipc-${n}`;
-    }
-    const base =
-      process.env.XDG_RUNTIME_DIR ||
-      process.env.TMPDIR ||
-      process.env.TMP ||
-      process.env.TEMP ||
-      "/tmp";
-    const paths = [
-      `${base}/discord-ipc-${n}`,
-      `${base}/app/com.discordapp.Discord/discord-ipc-${n}`,
-      `${base}/.flatpak/com.discordapp.Discord/xdg-run/discord-ipc-${n}`,
-      `${base}/snap.discord/discord-ipc-${n}`,
-    ];
-    return paths;
+    this._connectPromise = null;
+    this._generation = 0;
+    this._handshakeWaiter = null;
+    this.onReconnected = null;
+    this.onDisconnected = null;
   }
 
   _encode(op, payload) {
@@ -49,33 +61,103 @@ class DiscordIpcService {
     return Buffer.concat([header, data]);
   }
 
-  _tryConnect(pipePath) {
-    return new Promise((resolve) => {
-      const sock = net.createConnection(pipePath, () => resolve(sock));
-      sock.once("error", () => resolve(null));
-    });
+  connect() {
+    if (this.connected) return Promise.resolve();
+    if (this._connectPromise) return this._connectPromise;
+    const generation = this._generation;
+    this._connectPromise = this._connect(generation).finally(() => { this._connectPromise = null; });
+    return this._connectPromise;
   }
 
-  async connect() {
-    this._stopReconnect();
-    for (let n = this.pipeNumber; n < 10; n++) {
-      const paths = this._getPipePath(n);
-      const candidates = Array.isArray(paths) ? paths : [paths];
-
-      for (const pipePath of candidates) {
-        log.debug(`Trying pipe: ${pipePath}`);
-        const sock = await this._tryConnect(pipePath);
-        if (sock) {
-          this.socket = sock;
-          this._setupListeners();
-          await this._handshake();
-          this._autoReconnect = true;
-          this._reconnectDelay = 5000;
-          return;
+  async _connect(generation) {
+    let lastError;
+    for (const pipePath of getIpcPaths(this.pipeNumber, this.options)) {
+      if (generation !== this._generation) throw new Error("Discord connection cancelled");
+      log.debug(`Trying pipe: ${pipePath}`);
+      try {
+        await this._openAndHandshake(pipePath);
+        if (!this.socket || this.socket.destroyed) throw new Error("Discord closed IPC session");
+        if (generation !== this._generation) {
+          this.socket?.destroy();
+          throw new Error("Discord connection cancelled");
         }
+        this.connected = true;
+        this._stopReconnect();
+        this.connectedPath = pipePath;
+        this._autoReconnect = true;
+        this._reconnectDelay = 5000;
+        log.info("Connected to Discord IPC");
+        return;
+      } catch (err) {
+        lastError = err;
+        const failed = this.socket;
+        this.socket = null;
+        this._readBuffer = Buffer.alloc(0);
+        failed?.destroy();
+        log.debug(`IPC unavailable: ${err.message}`);
       }
     }
-    throw new Error("Could not connect to Discord IPC. Is Discord running?");
+    throw new Error(`Could not connect to Discord IPC (${lastError?.message || "no candidates"}). Run Discord desktop as the same user/session; use npm run doctor for diagnostics.`);
+  }
+
+  _openAndHandshake(pipePath) {
+    return new Promise((resolve, reject) => {
+      const sock = net.createConnection(pipePath);
+      this.socket = sock;
+      this._readBuffer = Buffer.alloc(0);
+      const timer = setTimeout(() => finish(new Error("Discord IPC connection/handshake timed out")), this.options.timeoutMs ?? 3000);
+      const finish = (error) => {
+        if (this._handshakeWaiter !== finish) return;
+        clearTimeout(timer);
+        this._handshakeWaiter = null;
+        if (error) { sock.destroy(); reject(error); } else resolve();
+      };
+      this._handshakeWaiter = finish;
+      sock.once("connect", () => sock.write(this._encode(OP_HANDSHAKE, { v: 1, client_id: this.clientId })));
+      sock.on("data", (chunk) => {
+        if (this.socket !== sock) return;
+        this._readBuffer = Buffer.concat([this._readBuffer, chunk]);
+        try {
+          while (this._readBuffer.length >= 8) {
+            const op = this._readBuffer.readInt32LE(0);
+            const len = this._readBuffer.readInt32LE(4);
+            if (len < 0 || len > MAX_FRAME_BYTES) throw new Error("Invalid Discord IPC frame length");
+            if (this._readBuffer.length < 8 + len) break;
+            const payload = JSON.parse(this._readBuffer.subarray(8, 8 + len).toString());
+            this._readBuffer = this._readBuffer.subarray(8 + len);
+            if (op === OP_PING) { sock.write(this._encode(OP_PONG, payload)); continue; }
+            if (op === OP_CLOSE) throw new Error("Discord closed IPC session");
+            if (this._handshakeWaiter && op === OP_FRAME) {
+              if (payload?.evt !== "READY") throw new Error("Discord IPC handshake failed");
+              finish();
+            } else if (payload?.evt === "ERROR") {
+              log.warn("Discord rejected RPC:", payload.data?.message || "unknown error");
+            }
+          }
+        } catch (err) {
+          finish(err);
+          sock.destroy();
+        }
+      });
+      sock.on("error", (err) => {
+        finish(err);
+        sock.destroy();
+      });
+      sock.on("close", () => {
+        finish(new Error("Discord IPC closed before handshake completed"));
+        if (this.socket !== sock) return;
+        const wasConnected = this.connected;
+        this.connected = false;
+        this.connectedPath = null;
+        this.socket = null;
+        this._readBuffer = Buffer.alloc(0);
+        if (wasConnected) {
+          log.info("Discord IPC connection closed");
+          this.onDisconnected?.();
+          if (this._autoReconnect) this._scheduleReconnect();
+        }
+      });
+    });
   }
 
   _scheduleReconnect() {
@@ -84,12 +166,10 @@ class DiscordIpcService {
     this._reconnectTimer = setTimeout(async () => {
       this._reconnectTimer = null;
       try {
-        this._autoReconnect = false; // prevent nested reconnect from close listener
         await this.connect();
-        log.info("Discord reconnected successfully");
-        if (this.onReconnected) this.onReconnected();
+        if (this._autoReconnect) await this.onReconnected?.();
       } catch {
-        this._autoReconnect = true;
+        if (!this._autoReconnect) return;
         this._reconnectDelay = Math.min(this._reconnectDelay * 2, 60000);
         this._scheduleReconnect();
       }
@@ -97,123 +177,32 @@ class DiscordIpcService {
   }
 
   _stopReconnect() {
-    if (this._reconnectTimer) {
-      clearTimeout(this._reconnectTimer);
-      this._reconnectTimer = null;
-    }
-  }
-
-  _setupListeners() {
-    this.socket.on("data", (chunk) => {
-      this._readBuffer = Buffer.concat([this._readBuffer, chunk]);
-    });
-    this.socket.on("close", () => {
-      log.info("Discord IPC connection closed");
-      this.connected = false;
-      this.socket = null;
-      this._readBuffer = Buffer.alloc(0);
-      if (this.onDisconnected) this.onDisconnected();
-      if (this._autoReconnect) {
-        this._scheduleReconnect();
-      }
-    });
-    this.socket.on("error", (err) => {
-      log.error("Discord IPC error:", err.message);
-      this.connected = false;
-    });
-  }
-
-  _readMessage() {
-    return new Promise((resolve) => {
-      const tryParse = () => {
-        if (this._readBuffer.length >= 8) {
-          const len = this._readBuffer.readInt32LE(4);
-          if (this._readBuffer.length >= 8 + len) {
-            const payload = JSON.parse(
-              this._readBuffer.subarray(8, 8 + len).toString()
-            );
-            this._readBuffer = this._readBuffer.subarray(8 + len);
-            resolve(payload);
-            return;
-          }
-        }
-        this.socket.once("data", tryParse);
-      };
-      tryParse();
-    });
-  }
-
-  async _handshake() {
-    const payload = { v: 1, client_id: this.clientId };
-    this.socket.write(this._encode(OP_HANDSHAKE, payload));
-    const response = await this._readMessage();
-    if (response?.evt === "READY") {
-      this.connected = true;
-      log.info(
-        `Connected to Discord (user: ${response.data?.user?.username || "unknown"})`
-      );
-    } else {
-      throw new Error("Discord IPC handshake failed");
-    }
+    clearTimeout(this._reconnectTimer);
+    this._reconnectTimer = null;
   }
 
   async setActivity(activity) {
-    if (!this.connected) {
-      log.warn("Not connected to Discord, skipping activity update");
-      return false;
-    }
-    const payload = {
-      cmd: "SET_ACTIVITY",
-      args: {
-        pid: constants.processId,
-        activity,
-      },
-      nonce: `${Date.now()}`,
-    };
-    try {
-      this.socket.write(this._encode(OP_FRAME, payload));
-      log.debug("Activity updated");
-      return true;
-    } catch (err) {
-      log.error("Failed to set activity:", err.message);
-      this.connected = false;
-      return false;
-    }
+    if (!this.connected || !this.socket || this.socket.destroyed) return false;
+    this.socket.write(this._encode(OP_FRAME, {
+      cmd: "SET_ACTIVITY", args: { pid: constants.processId, activity }, nonce: `${Date.now()}`,
+    }));
+    // This confirms a local write; RPC errors are logged when Discord responds.
+    return true;
   }
 
-  async clearActivity() {
-    if (!this.connected) return;
-    const payload = {
-      cmd: "SET_ACTIVITY",
-      args: {
-        pid: constants.processId,
-        activity: null,
-      },
-      nonce: `${Date.now()}`,
-    };
-    try {
-      this.socket.write(this._encode(OP_FRAME, payload));
-      log.debug("Activity cleared");
-    } catch (err) {
-      log.error("Failed to clear activity:", err.message);
-      this.connected = false;
-    }
-  }
+  async clearActivity() { return this.setActivity(null); }
 
   disconnect() {
+    this._generation++;
     this._autoReconnect = false;
     this._stopReconnect();
-    if (this.socket) {
-      try {
-        this.socket.write(this._encode(OP_CLOSE, {}));
-      } catch {}
-      this.socket.destroy();
-      this.socket = null;
-    }
+    this._handshakeWaiter?.(new Error("Discord connection cancelled"));
+    this.socket?.destroy();
+    this.socket = null;
     this.connected = false;
+    this.connectedPath = null;
     this._readBuffer = Buffer.alloc(0);
-    log.info("Disconnected from Discord");
   }
 }
 
-module.exports = { DiscordIpcService };
+module.exports = { DiscordIpcService, getIpcPaths };

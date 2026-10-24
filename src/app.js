@@ -32,6 +32,9 @@ class AppController extends EventEmitter {
     this._zonePlayStartTimes = {};
     this._lastActivity = null;
     this._lastEmitTime = 0; // Throttle GUI state updates
+    // Bumped whenever what Discord should show changes; in-flight updates and
+    // late cover art compare against it so they never overwrite newer state
+    this._activitySeq = 0;
 
     // Connection status
     this._roonStatus = "disconnected";
@@ -147,6 +150,7 @@ class AppController extends EventEmitter {
             // Still disconnected after grace period — clear activity
             if (this._roonStatus === "disconnected") {
               log.info("Roon disconnect grace period expired, clearing activity");
+              this._activitySeq++;
               this._clearPauseTimer();
               if (this.discord?.connected) {
                 this.discord.clearActivity().catch(() => {});
@@ -164,7 +168,7 @@ class AppController extends EventEmitter {
     this.roon.start(cfg.roon.coreAddress || undefined, { debug: cfg.logging.debug });
 
     // Start Discord
-    this.discord = new DiscordIpcService(cfg.discord.clientId, cfg.discord.pipeNumber);
+    this.discord = new DiscordIpcService(cfg.discord.clientId, cfg.discord.pipeNumber, { ipcPath: cfg.discord.ipcPath });
 
     this.discord.onDisconnected = () => {
       this._discordStatus = "disconnected";
@@ -267,6 +271,7 @@ class AppController extends EventEmitter {
     this._pauseTimer = setTimeout(async () => {
       this._pauseTimer = null;
       log.info("Pause timeout reached, clearing activity");
+      this._activitySeq++;
       this._lastState = "timeout";
       this._lastTrackKey = null;
       this._lastImageKey = null;
@@ -338,6 +343,7 @@ class AppController extends EventEmitter {
         this._lastState !== "stopped" &&
         this._lastState !== "timeout"
       ) {
+        this._activitySeq++;
         this._lastState = "stopped";
         this._lastImageKey = null;
         this._lastTrackKey = null;
@@ -369,6 +375,7 @@ class AppController extends EventEmitter {
 
     if (state === "paused") {
       if (this._lastState !== "paused") {
+        const seq = ++this._activitySeq;
         this._lastState = "paused";
         const trackInfo = now_playing.three_line;
         log.info(
@@ -376,22 +383,15 @@ class AppController extends EventEmitter {
         );
         this._startPauseTimer();
 
-        let coverArtUrl = now_playing.image_key
-          ? cache.get(now_playing.image_key)
-          : null;
-        if (
+        // Show the pause right away; a missing cover is filled in afterwards
+        const imageKey = now_playing.image_key;
+        const coverArtUrl = imageKey ? cache.get(imageKey) : null;
+        const fetchCover =
           !coverArtUrl &&
           cfg.display.showCoverArt &&
-          now_playing.image_key
-        ) {
-          const imageBuffer = await this.roon.getImage(now_playing.image_key);
-          if (imageBuffer) {
-            coverArtUrl = await uploadImage(
-              now_playing.image_key,
-              imageBuffer
-            );
-          }
-        }
+          imageKey &&
+          imageKey !== this._lastImageKey;
+
         const activity = buildActivity(zone, coverArtUrl);
         this._lastActivity = activity;
         if (activity && this.discord?.connected) {
@@ -399,6 +399,10 @@ class AppController extends EventEmitter {
         }
         this.emit("activity-updated", activity);
         this._emitState();
+        if (fetchCover) {
+          this._lastImageKey = imageKey;
+          this._fillCoverArt(seq, zone.zone_id, imageKey, null);
+        }
       }
       return;
     }
@@ -450,6 +454,8 @@ class AppController extends EventEmitter {
         log.debug(`Seek detected: eventSeek=${eventSeek}s`);
       }
     }
+    // New track, seek or zone switch: anything still in flight is now outdated
+    const seq = ++this._activitySeq;
     if (this._updateInProgress) {
       // Don't drop zone switches or new tracks — mark for retry after current update finishes
       this._pendingZoneRetry = true;
@@ -462,30 +468,13 @@ class AppController extends EventEmitter {
       this._lastState = "playing";
       this._lastTrackKey = trackKey;
 
+      // Send text first; an uncached cover is fetched afterwards so a slow
+      // Core image request can't hold back (or later overwrite) the status
       let coverArtUrl = null;
-      const needsUpload =
-        cfg.display.showCoverArt &&
-        now_playing.image_key &&
-        now_playing.image_key !== this._lastImageKey;
-
+      let fetchCover = false;
       if (cfg.display.showCoverArt && now_playing.image_key) {
-        if (needsUpload) {
-          // Check cache first — upload may already have a cached URL
-          coverArtUrl = cache.get(now_playing.image_key);
-          this._lastImageKey = now_playing.image_key;
-
-          if (!coverArtUrl) {
-            const imageBuffer = await this.roon.getImage(now_playing.image_key);
-            if (imageBuffer) {
-              coverArtUrl = await uploadImage(
-                now_playing.image_key,
-                imageBuffer
-              );
-            }
-          }
-        } else {
-          coverArtUrl = cache.get(now_playing.image_key);
-        }
+        coverArtUrl = cache.get(now_playing.image_key);
+        fetchCover = !coverArtUrl && now_playing.image_key !== this._lastImageKey;
       }
 
       // Re-read zone for track info, but use pre-computed timestamp for accuracy
@@ -505,6 +494,8 @@ class AppController extends EventEmitter {
           this._emitState();
           return;
         }
+        // Superseded while connecting — the pending retry sends the latest state
+        if (seq !== this._activitySeq) return;
       }
 
       await this.discord.setActivity(activity);
@@ -522,6 +513,10 @@ class AppController extends EventEmitter {
       this.emit("activity-updated", activity);
       this._lastEmitTime = Date.now();
       this._emitState();
+      if (fetchCover) {
+        this._lastImageKey = now_playing.image_key;
+        this._fillCoverArt(seq, zone.zone_id, now_playing.image_key, trackStartTimestamp);
+      }
     } catch (err) {
       log.error("Failed to update activity:", err.message);
     } finally {
@@ -535,6 +530,31 @@ class AppController extends EventEmitter {
           );
         }
       }
+    }
+  }
+
+  // Fetch and upload a cover after the text activity went out, then re-send
+  // only if nothing newer has been shown in the meantime
+  async _fillCoverArt(seq, zoneId, imageKey, trackStartTimestamp) {
+    try {
+      const imageBuffer = await this.roon.getImage(imageKey);
+      const coverArtUrl = imageBuffer ? await uploadImage(imageKey, imageBuffer) : null;
+      if (!coverArtUrl) return;
+
+      const zone = this.roon?.zones[zoneId];
+      if (!zone?.now_playing || zone.now_playing.image_key !== imageKey) return;
+      if (zone.state !== "playing" && zone.state !== "paused") return;
+      const activity = buildActivity(zone, coverArtUrl, trackStartTimestamp);
+      // No await between this check and the (synchronous) IPC write
+      if (!activity || seq !== this._activitySeq || !this.discord?.connected) return;
+
+      this._lastActivity = activity;
+      await this.discord.setActivity(activity);
+      log.debug(`Cover art added [${zone.display_name}]`);
+      this.emit("activity-updated", activity);
+      this._emitState();
+    } catch (err) {
+      log.error("Failed to add cover art:", err.message);
     }
   }
 

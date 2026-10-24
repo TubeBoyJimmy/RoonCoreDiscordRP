@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 const RoonApi = require("node-roon-api");
 const RoonApiTransport = require("node-roon-api-transport");
 const RoonApiImage = require("node-roon-api-image");
@@ -193,8 +194,11 @@ class RoonService {
             config = JSON.parse(fs.readFileSync(ROON_STATE_PATH, "utf8")) || {};
           } catch {}
           config.roonstate = state;
-          fs.writeFileSync(ROON_STATE_PATH, JSON.stringify(config, null, "    "));
-        } catch {}
+          fs.mkdirSync(path.dirname(ROON_STATE_PATH), { recursive: true, mode: 0o700 });
+          fs.writeFileSync(ROON_STATE_PATH, JSON.stringify(config, null, "    "), { mode: 0o600 });
+        } catch (err) {
+          log.error("Cannot save Roon pairing state:", err.message);
+        }
       },
 
       core_paired: (core) => this._onCorePaired(core),
@@ -241,18 +245,31 @@ class RoonService {
     }, this._reconnectDelay);
   }
 
-  getImage(imageKey) {
+  getImage(imageKey, timeoutMs = constants.imageTimeoutMs) {
     return new Promise((resolve) => {
       if (!this.image || !imageKey) {
         resolve(null);
         return;
       }
+      const started = Date.now();
+      let settled = false;
+      const timer = setTimeout(() => {
+        settled = true;
+        log.warn(`Cover art timed out after ${timeoutMs / 1000}s: ${this.getImageUrl(imageKey) || imageKey}`);
+        resolve(null);
+      }, timeoutMs);
       this.image.get_image(
         imageKey,
         { scale: "fit", width: constants.imageSize, height: constants.imageSize, format: constants.imageFormat },
         (err, contentType, buffer) => {
+          if (settled) {
+            log.debug(`Late cover art reply ignored after ${Date.now() - started}ms: ${err || "ok"}`);
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
           if (err) {
-            log.error("Failed to get image:", err);
+            log.error(`Failed to get image after ${Date.now() - started}ms:`, err);
             resolve(null);
           } else {
             resolve(buffer);

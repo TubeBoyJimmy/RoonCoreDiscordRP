@@ -1,5 +1,7 @@
 # RoonCoreDiscordRP
 
+[Linux 桌面使用指南](docs/linux-rehearsal.zh-TW.md)：Linux XDG 資料、桌面登入啟動、IPC 診斷與驗收範圍。已於 Debian 13 桌面實機驗證；Windows 路徑維持相容，本分支的 Windows 版本尚待實測。
+
 > 透過 Roon Core Extension API 驅動的 Discord Rich Presence
 
 **[🌐 English](README.md)**
@@ -27,15 +29,15 @@
 - **輕量化** — 不需要 Discord 函式庫（原生 IPC）、不需要圖片處理函式庫（Roon API 原生處理縮放）
 - **Electron GUI** — 儀表板、設定編輯、Discord 預覽、快取管理、即時日誌
 - **系統匣** — 縮小到系統匣，背景持續運作
-- **開機啟動** — 可選擇隨 Windows 開機啟動，自動最小化至系統匣
+- **登入啟動** — Linux 使用 XDG 桌面登入啟動，Windows 沿用現有方式；可自動最小化至系統匣
 - **時鐘偏移補償** — 以標準時間校正時間戳，即使主機時鐘漂移，顯示的播放時間依然精準
 - **自訂狀態文字** — 好友列表可顯示「Listening to *歌名*」（或藝人/應用程式名稱）
 
 ## 前置需求
 
-- **Node.js** 18+
+- **Node.js** 22.12+ 或 24（GUI 建置依賴需要較新的 Node.js）
 - **Roon Core** 在你的網路上運行
-- **Discord** 桌面版在同一台機器上運行
+- **Discord** 桌面版在同一台機器、同一使用者工作階段運行
 
 ## 安裝
 
@@ -61,7 +63,7 @@ npm start
    ![Roon Extensions](assets/Extensions.jpg)
 
 3. 連線成功後，列出所有可用的 Zone 並開始監聽
-4. 設定儲存至 `data/config.yaml`
+4. Windows 設定儲存至 `data/config.yaml`；Linux 預設存至 `~/.config/roon-core-discord-rp/config.yaml`
 
 ### GUI 模式（Electron）
 
@@ -82,7 +84,7 @@ npm run gui
 
 ## 設定說明
 
-首次執行後，可編輯 `data/config.yaml`：
+首次執行後，可編輯 Windows 的 `data/config.yaml`；Linux 預設是 `~/.config/roon-core-discord-rp/config.yaml`，可由 `XDG_CONFIG_HOME` 調整：
 
 ```yaml
 roon:
