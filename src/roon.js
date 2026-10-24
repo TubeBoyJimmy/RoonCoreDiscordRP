@@ -245,18 +245,31 @@ class RoonService {
     }, this._reconnectDelay);
   }
 
-  getImage(imageKey) {
+  getImage(imageKey, timeoutMs = constants.imageTimeoutMs) {
     return new Promise((resolve) => {
       if (!this.image || !imageKey) {
         resolve(null);
         return;
       }
+      const started = Date.now();
+      let settled = false;
+      const timer = setTimeout(() => {
+        settled = true;
+        log.warn(`Cover art timed out after ${timeoutMs / 1000}s: ${this.getImageUrl(imageKey) || imageKey}`);
+        resolve(null);
+      }, timeoutMs);
       this.image.get_image(
         imageKey,
         { scale: "fit", width: constants.imageSize, height: constants.imageSize, format: constants.imageFormat },
         (err, contentType, buffer) => {
+          if (settled) {
+            log.debug(`Late cover art reply ignored after ${Date.now() - started}ms: ${err || "ok"}`);
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
           if (err) {
-            log.error("Failed to get image:", err);
+            log.error(`Failed to get image after ${Date.now() - started}ms:`, err);
             resolve(null);
           } else {
             resolve(buffer);

@@ -26,4 +26,7 @@ module.exports = {
 
   imageSize: 512,
   imageFormat: "image/jpeg",
+  // Core fetches uncached artwork itself and only gives up after ~100s when the
+  // source is unreachable — never wait that long for a cover
+  imageTimeoutMs: 10000,
 };
